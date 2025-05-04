@@ -45,9 +45,8 @@ app.post('/orden', async (req, res) => {
     const qtyRaw = balanceUSDC / parseFloat(price);
     const quantityFull = Math.floor(qtyRaw / stepSize) * stepSize;
     const quantityBuy = ajustarCantidad(quantityFull, stepSize);
-    const quantitySell = ajustarCantidad(quantityFull * 0.98, stepSize);
+    const quantitySell = ajustarCantidad((quantityFull * 0.98) / 2, stepSize); // Dividir entre TP y SL
 
-    // Logs para depurar
     console.log('💰 balanceUSDC:', balanceUSDC);
     console.log('📈 qtyRaw:', qtyRaw);
     console.log('🧮 stepSize:', stepSize);
