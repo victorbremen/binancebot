@@ -42,12 +42,15 @@ app.post('/orden', async (req, res) => {
     const minQty = parseFloat(lotSizeFilter.minQty);
 
     const balanceUSDC = await getUSDCBalance();
-    const qtyRaw = balanceUSDC / parseFloat(price);
+    const usableUSDC = balanceUSDC * 0.85; // ✅ usar solo el 85% del saldo
+    const qtyRaw = usableUSDC / parseFloat(price);
     const quantityFull = Math.floor(qtyRaw / stepSize) * stepSize;
     const quantityBuy = ajustarCantidad(quantityFull, stepSize);
-    const quantitySell = ajustarCantidad((quantityFull * 0.98) / 2, stepSize); // Dividir entre TP y SL
+    const quantitySell = ajustarCantidad((quantityFull * 0.98) / 2, stepSize); // dividir entre TP y SL
 
+    // Logs para depurar
     console.log('💰 balanceUSDC:', balanceUSDC);
+    console.log('⚙️ usableUSDC (85%):', usableUSDC);
     console.log('📈 qtyRaw:', qtyRaw);
     console.log('🧮 stepSize:', stepSize);
     console.log('🔒 minQty:', minQty);
@@ -60,6 +63,7 @@ app.post('/orden', async (req, res) => {
         error: 'Cantidad insuficiente según LOT_SIZE',
         details: {
           balanceUSDC,
+          usableUSDC,
           qtyRaw,
           stepSize,
           minQty,
