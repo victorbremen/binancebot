@@ -27,7 +27,6 @@ async function getUSDCBalance() {
   return parseFloat(usdc?.free || 0);
 }
 
-// Función para redondear respetando el stepSize de Binance
 function ajustarCantidad(cantidad, stepSize) {
   return (Math.floor(cantidad / stepSize) * stepSize).toFixed(8);
 }
@@ -36,22 +35,39 @@ app.post('/orden', async (req, res) => {
   try {
     const { symbol, price, take_profit, stop_loss } = req.body;
 
-    // Obtener info del símbolo para filtros
     const exchangeInfo = await axios.get(`${BASE_URL}/api/v3/exchangeInfo?symbol=${symbol}`);
     const filters = exchangeInfo.data.symbols[0].filters;
     const lotSizeFilter = filters.find(f => f.filterType === 'LOT_SIZE');
     const stepSize = parseFloat(lotSizeFilter.stepSize);
     const minQty = parseFloat(lotSizeFilter.minQty);
 
-    // Calcular cantidad
     const balanceUSDC = await getUSDCBalance();
     const qtyRaw = balanceUSDC / parseFloat(price);
     const quantityFull = Math.floor(qtyRaw / stepSize) * stepSize;
     const quantityBuy = ajustarCantidad(quantityFull, stepSize);
-    const quantitySell = ajustarCantidad(quantityFull * 0.98, stepSize); // 98% por seguridad
+    const quantitySell = ajustarCantidad(quantityFull * 0.98, stepSize);
 
-    if (parseFloat(quantityBuy) < minQty) {
-      return res.status(400).json({ success: false, error: 'Cantidad insuficiente según LOT_SIZE' });
+    // Logs para depurar
+    console.log('💰 balanceUSDC:', balanceUSDC);
+    console.log('📈 qtyRaw:', qtyRaw);
+    console.log('🧮 stepSize:', stepSize);
+    console.log('🔒 minQty:', minQty);
+    console.log('✅ quantityBuy:', quantityBuy);
+    console.log('✅ quantitySell:', quantitySell);
+
+    if (parseFloat(quantityBuy) < minQty || parseFloat(quantitySell) < minQty) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cantidad insuficiente según LOT_SIZE',
+        details: {
+          balanceUSDC,
+          qtyRaw,
+          stepSize,
+          minQty,
+          quantityBuy,
+          quantitySell
+        }
+      });
     }
 
     const timestamp = Date.now();
@@ -80,11 +96,11 @@ app.post('/orden', async (req, res) => {
     res.json({ success: true, message: 'Orden BUY, TP y SL colocadas correctamente' });
 
   } catch (err) {
-    console.error(err.response?.data || err.message);
+    console.error('❌ ERROR:', err.response?.data || err.message);
     res.status(500).json({ success: false, error: err.response?.data || err.message });
   }
 });
 
 app.listen(3000, () => {
-  console.log('Servidor corriendo en puerto 3000');
+  console.log('🚀 Servidor corriendo en puerto 3000');
 });
