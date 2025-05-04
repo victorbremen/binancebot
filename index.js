@@ -27,21 +27,28 @@ async function getUSDCBalance() {
   return parseFloat(usdc?.free || 0);
 }
 
+// Función para redondear respetando el stepSize de Binance
+function ajustarCantidad(cantidad, stepSize) {
+  return (Math.floor(cantidad / stepSize) * stepSize).toFixed(8);
+}
+
 app.post('/orden', async (req, res) => {
   try {
     const { symbol, price, take_profit, stop_loss } = req.body;
 
+    // Obtener info del símbolo para filtros
     const exchangeInfo = await axios.get(`${BASE_URL}/api/v3/exchangeInfo?symbol=${symbol}`);
     const filters = exchangeInfo.data.symbols[0].filters;
     const lotSizeFilter = filters.find(f => f.filterType === 'LOT_SIZE');
     const stepSize = parseFloat(lotSizeFilter.stepSize);
     const minQty = parseFloat(lotSizeFilter.minQty);
 
+    // Calcular cantidad
     const balanceUSDC = await getUSDCBalance();
     const qtyRaw = balanceUSDC / parseFloat(price);
     const quantityFull = Math.floor(qtyRaw / stepSize) * stepSize;
-    const quantityBuy = quantityFull.toFixed(8);
-    const quantitySell = (quantityFull * 0.98).toFixed(8); // Vendemos 98% para evitar error
+    const quantityBuy = ajustarCantidad(quantityFull, stepSize);
+    const quantitySell = ajustarCantidad(quantityFull * 0.98, stepSize); // 98% por seguridad
 
     if (parseFloat(quantityBuy) < minQty) {
       return res.status(400).json({ success: false, error: 'Cantidad insuficiente según LOT_SIZE' });
