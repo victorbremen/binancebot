@@ -33,7 +33,7 @@ function ajustarCantidad(cantidad, stepSize) {
 
 app.post('/orden', async (req, res) => {
   try {
-    const { symbol, price, take_profit, stop_loss } = req.body;
+    const { symbol, take_profit, stop_loss } = req.body;
 
     const exchangeInfo = await axios.get(`${BASE_URL}/api/v3/exchangeInfo?symbol=${symbol}`);
     const filters = exchangeInfo.data.symbols[0].filters;
@@ -42,20 +42,13 @@ app.post('/orden', async (req, res) => {
     const minQty = parseFloat(lotSizeFilter.minQty);
 
     const balanceUSDC = await getUSDCBalance();
-    const usableUSDC = balanceUSDC * 0.85; // ✅ usar solo el 85% del saldo
-    const qtyRaw = usableUSDC / parseFloat(price);
+    const priceTicker = await axios.get(`${BASE_URL}/api/v3/ticker/price?symbol=${symbol}`);
+    const marketPrice = parseFloat(priceTicker.data.price);
+
+    const qtyRaw = balanceUSDC / marketPrice;
     const quantityFull = Math.floor(qtyRaw / stepSize) * stepSize;
     const quantityBuy = ajustarCantidad(quantityFull, stepSize);
-    const quantitySell = ajustarCantidad((quantityFull * 0.98) / 2, stepSize); // dividir entre TP y SL
-
-    // Logs para depurar
-    console.log('💰 balanceUSDC:', balanceUSDC);
-    console.log('⚙️ usableUSDC (85%):', usableUSDC);
-    console.log('📈 qtyRaw:', qtyRaw);
-    console.log('🧮 stepSize:', stepSize);
-    console.log('🔒 minQty:', minQty);
-    console.log('✅ quantityBuy:', quantityBuy);
-    console.log('✅ quantitySell:', quantitySell);
+    const quantitySell = ajustarCantidad(quantityFull / 2, stepSize); // TP y SL cada uno con la mitad
 
     if (parseFloat(quantityBuy) < minQty || parseFloat(quantitySell) < minQty) {
       return res.status(400).json({
@@ -63,7 +56,7 @@ app.post('/orden', async (req, res) => {
         error: 'Cantidad insuficiente según LOT_SIZE',
         details: {
           balanceUSDC,
-          usableUSDC,
+          marketPrice,
           qtyRaw,
           stepSize,
           minQty,
@@ -75,29 +68,28 @@ app.post('/orden', async (req, res) => {
 
     const timestamp = Date.now();
 
-    // Orden de compra
-    const buyParams = `symbol=${symbol}&side=BUY&type=LIMIT&timeInForce=GTC&quantity=${quantityBuy}&price=${price}&recvWindow=60000&timestamp=${timestamp}`;
+    // Orden de compra a mercado
+    const buyParams = `symbol=${symbol}&side=BUY&type=MARKET&quoteOrderQty=${balanceUSDC}&recvWindow=60000&timestamp=${timestamp}`;
     const buySignature = sign(buyParams);
-    await axios.post(`${BASE_URL}/api/v3/order?${buyParams}&signature=${buySignature}`, null, {
+    const buyResponse = await axios.post(`${BASE_URL}/api/v3/order?${buyParams}&signature=${buySignature}`, null, {
       headers: { 'X-MBX-APIKEY': API_KEY },
     });
 
-    // Take Profit
+    // TP
     const tpParams = `symbol=${symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=${quantitySell}&price=${take_profit}&recvWindow=60000&timestamp=${Date.now()}`;
     const tpSignature = sign(tpParams);
     await axios.post(`${BASE_URL}/api/v3/order?${tpParams}&signature=${tpSignature}`, null, {
       headers: { 'X-MBX-APIKEY': API_KEY },
     });
 
-    // Stop Loss
+    // SL
     const slParams = `symbol=${symbol}&side=SELL&type=STOP_LOSS_LIMIT&quantity=${quantitySell}&price=${stop_loss}&stopPrice=${stop_loss}&timeInForce=GTC&recvWindow=60000&timestamp=${Date.now()}`;
     const slSignature = sign(slParams);
     await axios.post(`${BASE_URL}/api/v3/order?${slParams}&signature=${slSignature}`, null, {
       headers: { 'X-MBX-APIKEY': API_KEY },
     });
 
-    res.json({ success: true, message: 'Orden BUY, TP y SL colocadas correctamente' });
-
+    res.json({ success: true, message: 'Orden MARKET ejecutada y TP/SL colocados correctamente' });
   } catch (err) {
     console.error('❌ ERROR:', err.response?.data || err.message);
     res.status(500).json({ success: false, error: err.response?.data || err.message });
